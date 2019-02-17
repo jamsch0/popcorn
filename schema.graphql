@@ -1,0 +1,22 @@
+# Copyright 2019 James Chapman
+
+scalar DateTime
+
+type Film {
+    "#[ownership(owned)]"
+    id: ID!
+    created_at: DateTime!
+    updated_at: DateTime!
+    title: String!
+    release_year: Int!
+    summary: String!
+    runtime_mins: Int!
+}
+
+type Query {
+    "#[ownership(owned)]"
+    getFilms: [Film!]!
+
+    "#[ownership(owned)]"
+    getFilm(id: ID!): Film
+}
