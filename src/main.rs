@@ -161,7 +161,7 @@ impl_web! {
         #[get("/")]
         #[content_type("text/html; charset=utf-8")]
         async fn graphiql(&self) -> String {
-            juniper::http::graphiql::graphiql_source("/graphql")
+            juniper::http::playground::playground_source("/graphql")
         }
 
         #[get("/graphql")]
