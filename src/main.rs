@@ -14,8 +14,8 @@ use chrono::prelude::*;
 use diesel::prelude::*;
 use tokio::prelude::*;
 
-use diesel::PgConnection;
 use diesel::r2d2::ConnectionManager;
+use diesel::PgConnection;
 use dotenv::dotenv;
 use http::StatusCode;
 use juniper::{EmptyMutation, GraphQLType, RootNode};
@@ -36,7 +36,9 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn db_conn(&self) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, r2d2::Error> {
+    pub fn db_conn(
+        &self,
+    ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, r2d2::Error> {
         self.db_conn_pool.get()
     }
 }
@@ -48,14 +50,23 @@ type Schema = RootNode<'static, Query, EmptyMutation<Context>>;
 struct Query;
 
 impl QueryFields for Query {
-    fn field_get_films(&self, executor: &juniper::Executor<'_, Context>, _: &QueryTrail<'_, Film, Walked>) -> juniper::FieldResult<Vec<Film>> {
+    fn field_get_films(
+        &self,
+        executor: &juniper::Executor<'_, Context>,
+        _: &QueryTrail<'_, Film, Walked>,
+    ) -> juniper::FieldResult<Vec<Film>> {
         let db = executor.context().db_conn()?;
 
         let films = films::table.load(&db)?;
         Ok(films)
     }
 
-    fn field_get_film(&self, executor: &juniper::Executor<'_, Context>, _: &QueryTrail<'_, Film, Walked>, id: Id) -> juniper::FieldResult<Option<Film>> {
+    fn field_get_film(
+        &self,
+        executor: &juniper::Executor<'_, Context>,
+        _: &QueryTrail<'_, Film, Walked>,
+        id: Id,
+    ) -> juniper::FieldResult<Option<Film>> {
         let id = Uuid::parse_str(&id.0)?;
         let db = executor.context().db_conn()?;
 
@@ -69,11 +80,17 @@ impl FilmFields for Film {
         Ok(Id::new(self.id.hyphenated().to_string()))
     }
 
-    fn field_created_at(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<&DateTime<Utc>> {
+    fn field_created_at(
+        &self,
+        _: &juniper::Executor<'_, Context>,
+    ) -> juniper::FieldResult<&DateTime<Utc>> {
         Ok(&self.created_at)
     }
 
-    fn field_updated_at(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<&DateTime<Utc>> {
+    fn field_updated_at(
+        &self,
+        _: &juniper::Executor<'_, Context>,
+    ) -> juniper::FieldResult<&DateTime<Utc>> {
         Ok(&self.updated_at)
     }
 
@@ -101,7 +118,11 @@ struct GraphQLRequest {
 }
 
 impl GraphQLRequest {
-    pub fn execute<CtxT, QueryT, MutationT>(&self, root_node: &RootNode<'_, QueryT, MutationT>, context: &CtxT) -> GraphQLResponse
+    pub fn execute<CtxT, QueryT, MutationT>(
+        &self,
+        root_node: &RootNode<'_, QueryT, MutationT>,
+        context: &CtxT,
+    ) -> GraphQLResponse
     where
         QueryT: GraphQLType<Context = CtxT>,
         MutationT: GraphQLType<Context = CtxT>,
@@ -160,8 +181,7 @@ impl_web! {
 fn main() {
     dotenv().ok();
 
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     let manager = ConnectionManager::<PgConnection>::new(database_url);
     let db_conn_pool = r2d2::Pool::<ConnectionManager<PgConnection>>::new(manager).unwrap();
