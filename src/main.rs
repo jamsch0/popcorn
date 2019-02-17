@@ -7,10 +7,11 @@
 extern crate diesel;
 #[macro_use]
 extern crate tower_web;
+#[macro_use]
+extern crate juniper;
 
 use std::env;
 
-use chrono::prelude::*;
 use diesel::prelude::*;
 use tokio::prelude::*;
 
@@ -18,18 +19,15 @@ use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use dotenv::dotenv;
 use http::StatusCode;
-use juniper::{EmptyMutation, GraphQLType, RootNode};
-use juniper_from_schema::graphql_schema_from_file;
+use juniper::{FieldError, GraphQLType, RootNode};
 use tower_web::ServiceBuilder;
 use uuid::Uuid;
 
 mod models;
 mod schema;
 
-use crate::models::Film;
+use crate::models::{CreateFilm, Film};
 use crate::schema::films;
-
-graphql_schema_from_file!("schema.graphql");
 
 pub struct Context {
     db_conn_pool: r2d2::Pool<ConnectionManager<PgConnection>>,
@@ -45,71 +43,50 @@ impl Context {
 
 impl juniper::Context for Context {}
 
-type Schema = RootNode<'static, Query, EmptyMutation<Context>>;
+type Schema = RootNode<'static, Query, Mutation>;
 
 struct Query;
 
-impl QueryFields for Query {
-    fn field_get_films(
-        &self,
-        executor: &juniper::Executor<'_, Context>,
-        _: &QueryTrail<'_, Film, Walked>,
-    ) -> juniper::FieldResult<Vec<Film>> {
+graphql_object!(Query: Context |&self| {
+    field get_films(&executor, first: Option<i32>, offset: Option<i32>) -> Result<Vec<Film>, FieldError> {
         let db = executor.context().db_conn()?;
 
-        let films = films::table.load(&db)?;
+        let mut query = films::table.into_boxed();
+        if let Some(first) = first {
+            query = query.limit(first.into());
+        }
+        if let Some(offset) = offset {
+            query = query.offset(offset.into());
+        }
+
+        let films = query.load(&db)?;
+
         Ok(films)
     }
 
-    fn field_get_film(
-        &self,
-        executor: &juniper::Executor<'_, Context>,
-        _: &QueryTrail<'_, Film, Walked>,
-        id: Id,
-    ) -> juniper::FieldResult<Option<Film>> {
-        let id = Uuid::parse_str(&id.0)?;
+    field get_film(&executor, id: Uuid) -> Result<Option<Film>, FieldError> {
         let db = executor.context().db_conn()?;
+        let film = films::table.find(id)
+            .first(&db)
+            .ok();
 
-        let film = films::table.find(id).first(&db).ok();
         Ok(film)
     }
-}
+});
 
-impl FilmFields for Film {
-    fn field_id(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<Id> {
-        Ok(Id::new(self.id.hyphenated().to_string()))
-    }
+struct Mutation;
 
-    fn field_created_at(
-        &self,
-        _: &juniper::Executor<'_, Context>,
-    ) -> juniper::FieldResult<&DateTime<Utc>> {
-        Ok(&self.created_at)
-    }
+graphql_object!(Mutation: Context |&self| {
+    field create_film(&executor, input: CreateFilm) -> Result<Option<Film>, FieldError> {
+        let db = executor.context().db_conn()?;
+        let film = diesel::insert_into(films::table)
+            .values(&input)
+            .get_result(&db)
+            .ok();
 
-    fn field_updated_at(
-        &self,
-        _: &juniper::Executor<'_, Context>,
-    ) -> juniper::FieldResult<&DateTime<Utc>> {
-        Ok(&self.updated_at)
+        Ok(film)
     }
-
-    fn field_title(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<&String> {
-        Ok(&self.title)
-    }
-
-    fn field_release_year(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<&i32> {
-        Ok(&self.release_year)
-    }
-
-    fn field_summary(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<&String> {
-        Ok(&self.summary)
-    }
-
-    fn field_runtime_mins(&self, _: &juniper::Executor<'_, Context>) -> juniper::FieldResult<&i32> {
-        Ok(&self.runtime_mins)
-    }
-}
+});
 
 #[derive(Debug, Extract, Deserialize)]
 struct GraphQLRequest {
@@ -191,7 +168,7 @@ fn main() {
 
     ServiceBuilder::new()
         .resource(Api {
-            schema: Schema::new(Query, EmptyMutation::<Context>::new()),
+            schema: Schema::new(Query, Mutation),
             context: Context { db_conn_pool },
         })
         .run(&addr)
