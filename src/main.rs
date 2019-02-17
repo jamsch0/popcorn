@@ -1,5 +1,8 @@
 // Copyright 2019 James Chapman
 
+#![feature(async_await, await_macro, futures_api)]
+#![warn(clippy::all, rust_2018_idioms)]
+
 #[macro_use]
 extern crate diesel;
 #[macro_use]
@@ -98,7 +101,7 @@ struct GraphQLRequest {
 }
 
 impl GraphQLRequest {
-    pub fn execute<CtxT, QueryT, MutationT>(&self, root_node: &RootNode<QueryT, MutationT>, context: &CtxT) -> impl Future<Item = GraphQLResponse, Error = ()>
+    pub fn execute<CtxT, QueryT, MutationT>(&self, root_node: &RootNode<'_, QueryT, MutationT>, context: &CtxT) -> GraphQLResponse
     where
         QueryT: GraphQLType<Context = CtxT>,
         MutationT: GraphQLType<Context = CtxT>,
@@ -110,10 +113,11 @@ impl GraphQLRequest {
             StatusCode::BAD_REQUEST
         };
         let json = serde_json::to_value(&response).unwrap();
-        future::ok(GraphQLResponse {
+
+        GraphQLResponse {
             inner: json,
             status: status.into(),
-        })
+        }
     }
 }
 
@@ -135,19 +139,19 @@ impl_web! {
     impl Api {
         #[get("/")]
         #[content_type("text/html; charset=utf-8")]
-        fn graphiql(&self) -> impl Future<Item = String, Error = ()> + Send {
-            future::ok(juniper::http::graphiql::graphiql_source("/graphql"))
+        async fn graphiql(&self) -> String {
+            juniper::http::graphiql::graphiql_source("/graphql")
         }
 
         #[get("/graphql")]
         #[content_type("application/json")]
-        fn get_graphql_handler(&self, query_string: GraphQLRequest) -> impl Future<Item = GraphQLResponse, Error = ()> + Send {
+        async fn get_graphql_handler(&self, query_string: GraphQLRequest) -> GraphQLResponse {
             query_string.execute(&self.schema, &self.context)
         }
 
         #[post("/graphql")]
         #[content_type("application/json")]
-        fn post_graphql_handler(&self, body: GraphQLRequest) -> impl Future<Item = GraphQLResponse, Error = ()> + Send {
+        async fn post_graphql_handler(&self, body: GraphQLRequest) -> GraphQLResponse {
             body.execute(&self.schema, &self.context)
         }
     }
