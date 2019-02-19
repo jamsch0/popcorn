@@ -25,12 +25,15 @@ use uuid::Uuid;
 
 mod models;
 mod schema;
+mod tmdb;
 
 use crate::models::{CreateFilm, Film};
 use crate::schema::films;
+use crate::tmdb::{SearchMovieResults, TmdbClient};
 
 pub struct Context {
     db_conn_pool: r2d2::Pool<ConnectionManager<PgConnection>>,
+    tmdb_client: TmdbClient,
 }
 
 impl Context {
@@ -71,6 +74,11 @@ graphql_object!(Query: Context |&self| {
             .ok();
 
         Ok(film)
+    }
+
+    field search_movies(&executor, title: String) -> Result<SearchMovieResults, FieldError> {
+        let tmdb = &executor.context().tmdb_client;
+        tmdb.search_movies(&title).map_err(Into::into)
     }
 });
 
@@ -163,13 +171,16 @@ fn main() {
     let manager = ConnectionManager::<PgConnection>::new(database_url);
     let db_conn_pool = r2d2::Pool::<ConnectionManager<PgConnection>>::new(manager).unwrap();
 
+    let tmdb_api_key = env::var("TMDB_API_KEY").expect("TMDB_API_KEY must be set");
+    let tmdb_client = TmdbClient::new(tmdb_api_key);
+
     let addr = "127.0.0.1:8080".parse().unwrap();
     println!("GraphQL API running on: {}", addr);
 
     ServiceBuilder::new()
         .resource(Api {
             schema: Schema::new(Query, Mutation),
-            context: Context { db_conn_pool },
+            context: Context { db_conn_pool, tmdb_client },
         })
         .run(&addr)
         .unwrap();

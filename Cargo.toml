@@ -5,11 +5,12 @@ authors = ["James Chapman <jchapman3000@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-chrono = "0.4.6"
+chrono = { version = "0.4.6", features = ["serde"] }
 diesel = { version = "1.4.1", features = ["extras", "postgres", "uuidv07"] }
 dotenv = "0.13.0"
 http = "0.1.15"
 juniper = "0.11.1"
+reqwest = "0.9.10"
 r2d2 = "0.8.3"
 serde = "1.0.88"
 serde_json = "1.0.38"
